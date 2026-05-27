@@ -1,0 +1,1006 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+const T = {
+  bg0: "#04060f", bg1: "#080d1a", bg2: "#0d1526", bg3: "#111d33",
+  card: "rgba(13,21,38,0.85)", cardBorder: "rgba(56,189,248,0.10)",
+  neon: "#38bdf8", neon2: "#818cf8", accent: "#f472b6", gold: "#fbbf24",
+  green: "#34d399", red: "#f87171", orange: "#fb923c",
+  text: "#e2e8f0", muted: "#64748b", dim: "#334155",
+  font: "'Outfit', sans-serif", mono: "'JetBrains Mono', monospace",
+};
+
+// ─── STATIC DATA ─────────────────────────────────────────────────────────────
+const IPL_TEAMS = [
+  { id:"MI", name:"Mumbai Indians", color:"#004ba0", abbr:"MI" },
+  { id:"CSK", name:"Chennai Super Kings", color:"#ffd700", abbr:"CSK" },
+  { id:"RCB", name:"Royal Challengers Bengaluru", color:"#c8102e", abbr:"RCB" },
+  { id:"KKR", name:"Kolkata Knight Riders", color:"#3a225d", abbr:"KKR" },
+  { id:"DC", name:"Delhi Capitals", color:"#004b8d", abbr:"DC" },
+  { id:"PBKS", name:"Punjab Kings", color:"#aa4545", abbr:"PBKS" },
+  { id:"RR", name:"Rajasthan Royals", color:"#ff69b4", abbr:"RR" },
+  { id:"SRH", name:"Sunrisers Hyderabad", color:"#ff822a", abbr:"SRH" },
+  { id:"GT", name:"Gujarat Titans", color:"#1c2951", abbr:"GT" },
+  { id:"LSG", name:"Lucknow Super Giants", color:"#a2d149", abbr:"LSG" },
+];
+
+const UPCOMING = [
+  { id:1, t1:"MI", t2:"CSK", time:"Today 7:30 PM", venue:"Wankhede, Mumbai", pitch:"Batting", weather:"Clear ☀️", hot:true },
+  { id:2, t1:"RCB", t2:"KKR", time:"Tomorrow 3:30 PM", venue:"Chinnaswamy, Bengaluru", pitch:"Balanced", weather:"Partly Cloudy 🌤️", hot:false },
+  { id:3, t1:"DC", t2:"RR", time:"May 29 7:30 PM", venue:"Arun Jaitley, Delhi", pitch:"Bowling", weather:"Hot 🌡️", hot:false },
+  { id:4, t1:"SRH", t2:"PBKS", time:"May 30 7:30 PM", venue:"Rajiv Gandhi, Hyd", pitch:"Batting", weather:"Clear ☀️", hot:false },
+];
+
+const ROLES = { WK:"Wicket-Keeper", BAT:"Batter", AR:"All-Rounder", BOWL:"Bowler" };
+const ROLE_COLOR = { WK:"#fbbf24", BAT:"#38bdf8", AR:"#34d399", BOWL:"#f472b6" };
+const ROLE_ICON = { WK:"🧤", BAT:"🏏", AR:"⚡", BOWL:"🎳" };
+
+const CONTEST_TYPES = [
+  { id:"GL", label:"Grand League", icon:"🏆", desc:"High risk · Max reward · Differentials key", color:"#fbbf24" },
+  { id:"SL", label:"Small League", icon:"🎯", desc:"Safe picks · Consistent performers", color:"#34d399" },
+  { id:"H2H", label:"Head to Head", icon:"⚔️", desc:"1v1 · Best consistent team", color:"#38bdf8" },
+  { id:"MEGA", label:"Mega Contest", icon:"💎", desc:"Massive pool · Contrarian strategy", color:"#f472b6" },
+];
+
+const RISK_LEVELS = [
+  { id:"safe", label:"Safe", color:"#34d399", desc:"Proven performers, high floor" },
+  { id:"balanced", label:"Balanced", color:"#38bdf8", desc:"Mix of safe + upside" },
+  { id:"risky", label:"High Risk", color:"#fb923c", desc:"Differentials, big upside" },
+  { id:"degen", label:"Ultra Degen", color:"#f472b6", desc:"Max differentials, boom/bust" },
+];
+
+function makePlayers(t1id, t2id) {
+  const pool = [
+    // WK
+    {n:"Ishan Kishan",r:"WK",t:t1id,cr:9,pts:68,sel:72,form:88,ai:91,venue:82,cap:34},
+    {n:"MS Dhoni",r:"WK",t:t2id,cr:9,pts:48,sel:55,form:62,ai:74,venue:78,cap:28},
+    // BAT
+    {n:"Rohit Sharma",r:"BAT",t:t1id,cr:11,pts:82,sel:78,form:85,ai:88,venue:90,cap:42},
+    {n:"Tilak Varma",r:"BAT",t:t1id,cr:9,pts:74,sel:48,form:91,ai:89,venue:76,cap:22},
+    {n:"Suryakumar Yadav",r:"BAT",t:t1id,cr:10.5,pts:88,sel:82,form:94,ai:95,venue:88,cap:51},
+    {n:"Ruturaj Gaikwad",r:"BAT",t:t2id,cr:10,pts:76,sel:65,form:80,ai:82,venue:84,cap:38},
+    {n:"Devon Conway",r:"BAT",t:t2id,cr:9,pts:71,sel:44,form:78,ai:80,venue:72,cap:19},
+    // AR
+    {n:"Hardik Pandya",r:"AR",t:t1id,cr:10.5,pts:79,sel:68,form:76,ai:84,venue:80,cap:32},
+    {n:"Ravindra Jadeja",r:"AR",t:t2id,cr:10,pts:84,sel:74,form:88,ai:90,venue:86,cap:44},
+    {n:"Mitchell Santner",r:"AR",t:t2id,cr:8.5,pts:58,sel:28,form:72,ai:71,venue:68,cap:12},
+    // BOWL
+    {n:"Jasprit Bumrah",r:"BOWL",t:t1id,cr:10,pts:92,sel:88,form:96,ai:97,venue:91,cap:48},
+    {n:"Trent Boult",r:"BOWL",t:t1id,cr:9,pts:72,sel:52,form:78,ai:79,venue:74,cap:24},
+    {n:"Deepak Chahar",r:"BOWL",t:t2id,cr:8.5,pts:66,sel:41,form:74,ai:75,venue:70,cap:18},
+    {n:"Matheesha Pathirana",r:"BOWL",t:t2id,cr:9,pts:78,sel:62,form:86,ai:84,venue:76,cap:31},
+    {n:"Tushar Deshpande",r:"BOWL",t:t2id,cr:8,pts:54,sel:22,form:68,ai:67,venue:64,cap:10},
+  ];
+  return pool.map((p,i)=>({...p, id:`p${i}`, diff: p.sel < 35 }));
+}
+
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const rand = (a,b) => Math.floor(Math.random()*(b-a+1))+a;
+const pct = n => `${n}%`;
+const teamColor = id => IPL_TEAMS.find(t=>t.id===id)?.color || "#38bdf8";
+const teamName = id => IPL_TEAMS.find(t=>t.id===id)?.name || id;
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+
+// ─── GLOBAL CSS ──────────────────────────────────────────────────────────────
+const GLOBAL_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#04060f;color:#e2e8f0;font-family:'Outfit',sans-serif;overflow-x:hidden;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-track{background:#080d1a;}::-webkit-scrollbar-thumb{background:#38bdf844;border-radius:2px;}
+select{-webkit-appearance:none;}
+input,select,textarea{outline:none;font-family:'Outfit',sans-serif;}
+button{font-family:'Outfit',sans-serif;cursor:pointer;border:none;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shimmer{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@keyframes glow{0%,100%{box-shadow:0 0 8px #38bdf844}50%{box-shadow:0 0 24px #38bdf888,0 0 48px #38bdf833}}
+@keyframes scanline{0%{top:-4px}100%{top:100%}}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@keyframes countUp{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:scale(1)}}
+.fade-up{animation:fadeUp .4s ease forwards;}
+.fade-in{animation:fadeIn .3s ease forwards;}
+.glow-anim{animation:glow 3s ease infinite;}
+.float-anim{animation:float 4s ease infinite;}
+.pulse-anim{animation:pulse 2s ease infinite;}
+.spin-anim{animation:spin 1s linear infinite;}
+.count-up{animation:countUp .5s ease forwards;}
+.btn-press:active{transform:scale(.97);}
+`;
+
+// ─── SUB-COMPONENTS ──────────────────────────────────────────────────────────
+
+function GlassCard({ children, style, glow, onClick, className }) {
+  return (
+    <div onClick={onClick} className={className} style={{
+      background: T.card,
+      backdropFilter: "blur(20px)",
+      border: `1px solid ${glow ? "#38bdf844" : T.cardBorder}`,
+      borderRadius: 16,
+      position: "relative",
+      overflow: "hidden",
+      ...(glow && { boxShadow: "0 0 24px #38bdf822, inset 0 1px 0 #38bdf822" }),
+      ...style
+    }}>
+      {glow && <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse at 50% 0%, #38bdf808 0%, transparent 60%)", pointerEvents:"none" }} />}
+      {children}
+    </div>
+  );
+}
+
+function LiveDot({ color="#34d399" }) {
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:4 }}>
+      <span className="pulse-anim" style={{ width:6, height:6, borderRadius:"50%", background:color, display:"inline-block", boxShadow:`0 0 6px ${color}` }} />
+    </span>
+  );
+}
+
+function AIBadge({ label="AI PICK" }) {
+  return (
+    <span style={{ background:"linear-gradient(135deg,#38bdf822,#818cf822)", border:"1px solid #38bdf844", borderRadius:6, padding:"2px 7px", fontSize:9, fontWeight:700, letterSpacing:".08em", color:T.neon }}>
+      {label}
+    </span>
+  );
+}
+
+function StatBar({ value, max=100, color="#38bdf8", height=4, label, showPct }) {
+  return (
+    <div>
+      {(label||showPct) && <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+        {label && <span style={{ fontSize:11, color:T.muted }}>{label}</span>}
+        {showPct && <span style={{ fontSize:11, fontWeight:700, color }}>{value}{showPct}</span>}
+      </div>}
+      <div style={{ background:"#ffffff0a", borderRadius:999, height, overflow:"hidden" }}>
+        <div style={{ width:pct(clamp(value/max*100,0,100)), height:"100%", background:`linear-gradient(90deg, ${color}aa, ${color})`, borderRadius:999, transition:"width .6s ease", boxShadow:`0 0 8px ${color}44` }} />
+      </div>
+    </div>
+  );
+}
+
+function Spinner({ size=20, color="#38bdf8" }) {
+  return <div className="spin-anim" style={{ width:size, height:size, border:`2px solid ${color}22`, borderTopColor:color, borderRadius:"50%" }} />;
+}
+
+function SkeletonCard({ height=80 }) {
+  return (
+    <div style={{ height, borderRadius:14, background:"#0d1526", overflow:"hidden", position:"relative" }}>
+      <div style={{ position:"absolute", inset:0, background:"linear-gradient(90deg,transparent,#38bdf808,transparent)", animation:"shimmer 1.5s infinite" }} />
+    </div>
+  );
+}
+
+function RoleBadge({ role }) {
+  return (
+    <span style={{ background:`${ROLE_COLOR[role]}22`, border:`1px solid ${ROLE_COLOR[role]}44`, borderRadius:6, padding:"2px 6px", fontSize:9, fontWeight:800, letterSpacing:".06em", color:ROLE_COLOR[role] }}>
+      {ROLE_ICON[role]} {role}
+    </span>
+  );
+}
+
+function TeamBadge({ teamId }) {
+  return (
+    <span style={{ background:`${teamColor(teamId)}22`, border:`1px solid ${teamColor(teamId)}44`, borderRadius:6, padding:"2px 6px", fontSize:9, fontWeight:700, color:"#e2e8f0" }}>
+      {teamId}
+    </span>
+  );
+}
+
+function ScoreRing({ score, size=56, stroke=4, color="#38bdf8", label }) {
+  const r = (size-stroke*2)/2;
+  const c = 2*Math.PI*r;
+  const filled = c*(score/100);
+  return (
+    <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2 }}>
+      <svg width={size} height={size} style={{ transform:"rotate(-90deg)" }}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#ffffff08" strokeWidth={stroke} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={`${filled} ${c}`} strokeLinecap="round"
+          style={{ filter:`drop-shadow(0 0 4px ${color})` }} />
+        <text x={size/2} y={size/2} textAnchor="middle" dominantBaseline="central"
+          style={{ fill:color, fontSize:13, fontWeight:800, fontFamily:T.font, transform:"rotate(90deg)", transformOrigin:`${size/2}px ${size/2}px` }}>
+          {score}
+        </text>
+      </svg>
+      {label && <span style={{ fontSize:9, color:T.muted, letterSpacing:".06em" }}>{label}</span>}
+    </div>
+  );
+}
+
+// ─── MATCH CARD ──────────────────────────────────────────────────────────────
+function MatchCard({ match, selected, onSelect }) {
+  const t1 = IPL_TEAMS.find(t=>t.id===match.t1);
+  const t2 = IPL_TEAMS.find(t=>t.id===match.t2);
+  return (
+    <GlassCard glow={selected} onClick={() => onSelect(match)}
+      className="btn-press"
+      style={{ padding:14, cursor:"pointer", border:`1px solid ${selected?"#38bdf866":T.cardBorder}`, transition:"all .2s" }}>
+      {match.hot && (
+        <div style={{ position:"absolute", top:10, right:10, background:"#f472b622", border:"1px solid #f472b644", borderRadius:6, padding:"2px 7px", fontSize:9, fontWeight:700, color:"#f472b6" }}>
+          🔥 HOT
+        </div>
+      )}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ width:32, height:32, borderRadius:10, background:t1.color+"33", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, color:"#fff", border:`1px solid ${t1.color}44` }}>{t1.abbr}</div>
+          <span style={{ fontWeight:700, fontSize:14 }}>{t1.abbr}</span>
+        </div>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontSize:9, color:T.muted, letterSpacing:".1em" }}>VS</div>
+          <div style={{ fontSize:10, color:T.neon, fontWeight:600, marginTop:1 }}>{match.time}</div>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:8, flexDirection:"row-reverse" }}>
+          <div style={{ width:32, height:32, borderRadius:10, background:t2.color+"33", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:800, color:"#fff", border:`1px solid ${t2.color}44` }}>{t2.abbr}</div>
+          <span style={{ fontWeight:700, fontSize:14 }}>{t2.abbr}</span>
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        {[["📍",match.venue],["🏏",match.pitch],["🌤️",match.weather]].map(([ic,v])=>(
+          <span key={v} style={{ fontSize:10, color:T.muted, background:"#ffffff06", borderRadius:6, padding:"3px 7px" }}>{ic} {v}</span>
+        ))}
+      </div>
+    </GlassCard>
+  );
+}
+
+// ─── HOME SCREEN ─────────────────────────────────────────────────────────────
+function HomeScreen({ onNavigate, onSelectMatch }) {
+  const [loaded, setLoaded] = useState(false);
+  useEffect(()=>{ setTimeout(()=>setLoaded(true),300); },[]);
+
+  const trending = [
+    { name:"Suryakumar Yadav", team:"MI", pts:"+42 pts", tag:"🔥 Blazing Form", color:"#38bdf8" },
+    { name:"Jasprit Bumrah", team:"MI", pts:"+38 pts", tag:"🎯 Venue Ace", color:"#34d399" },
+    { name:"Ravindra Jadeja", team:"CSK", pts:"+35 pts", tag:"⚡ All-Round", color:"#fbbf24" },
+    { name:"Matheesha Pathirana", team:"CSK", pts:"+28 pts", tag:"💎 Differential", color:"#f472b6" },
+  ];
+
+  const aiInsights = [
+    { icon:"⚠️", text:"Toss alert: MI vs CSK • Wankhede favors batting first", color:"#fbbf24" },
+    { icon:"💡", text:"Differential: Tilak Varma only 48% sel, high ceiling tonight", color:"#38bdf8" },
+    { icon:"🚨", text:"Injury watch: Devon Conway doubtful — monitor till 6 PM", color:"#f87171" },
+  ];
+
+  return (
+    <div style={{ padding:"0 16px 80px", paddingTop:60 }}>
+      {/* Hero */}
+      <div className="fade-up" style={{ marginBottom:20, paddingTop:8 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+          <LiveDot />
+          <span style={{ fontSize:11, color:T.neon, letterSpacing:".1em", fontWeight:600 }}>LIVE ANALYSIS</span>
+        </div>
+        <h1 style={{ fontSize:26, fontWeight:900, letterSpacing:"-.02em", lineHeight:1.2, marginBottom:6 }}>
+          Win Big with<br/><span style={{ background:"linear-gradient(135deg,#38bdf8,#818cf8)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>AI-Powered</span> Teams
+        </h1>
+        <p style={{ fontSize:13, color:T.muted, lineHeight:1.5 }}>Smart picks • GL strategy • Live toss updates</p>
+      </div>
+
+      {/* Quick stats */}
+      <div className="fade-up" style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:8, marginBottom:20 }}>
+        {[["4","Matches Today","🏏"],["89%","Avg Win Rate","🏆"],["50K+","Teams Built","🤖"]].map(([v,l,ic])=>(
+          <GlassCard key={l} style={{ padding:"12px 8px", textAlign:"center" }}>
+            <div style={{ fontSize:20, marginBottom:2 }}>{ic}</div>
+            <div style={{ fontSize:18, fontWeight:800, color:T.neon }}>{v}</div>
+            <div style={{ fontSize:9, color:T.muted, letterSpacing:".06em" }}>{l}</div>
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* AI Insights ticker */}
+      <div className="fade-up" style={{ marginBottom:20 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+          <AIBadge label="AI ALERTS" />
+          <span style={{ fontSize:12, fontWeight:600, color:T.text }}>Live Insights</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {aiInsights.map((ins,i)=>(
+            <GlassCard key={i} style={{ padding:"10px 14px", borderLeft:`2px solid ${ins.color}` }}>
+              <span style={{ fontSize:12, lineHeight:1.5 }}>{ins.icon} {ins.text}</span>
+            </GlassCard>
+          ))}
+        </div>
+      </div>
+
+      {/* Upcoming matches */}
+      <div className="fade-up" style={{ marginBottom:20 }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <span style={{ fontWeight:700, fontSize:15 }}>Upcoming Matches</span>
+          <span style={{ fontSize:11, color:T.neon, cursor:"pointer" }}>View All →</span>
+        </div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {UPCOMING.map(m=>(
+            <MatchCard key={m.id} match={m} selected={false} onSelect={(match)=>{ onSelectMatch(match); onNavigate("build"); }} />
+          ))}
+        </div>
+      </div>
+
+      {/* Trending */}
+      <div className="fade-up" style={{ marginBottom:20 }}>
+        <div style={{ fontWeight:700, fontSize:15, marginBottom:12 }}>🔥 Trending Picks</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {trending.map((p,i)=>(
+            <GlassCard key={i} style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ width:40, height:40, borderRadius:12, background:`linear-gradient(135deg, ${p.color}33, ${p.color}11)`, border:`1px solid ${p.color}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, fontWeight:800, color:p.color, flexShrink:0 }}>
+                {p.name.charAt(0)}
+              </div>
+              <div style={{ flex:1 }}>
+                <div style={{ fontWeight:700, fontSize:13 }}>{p.name}</div>
+                <div style={{ fontSize:11, color:T.muted, marginTop:2 }}>{p.tag} · {p.team}</div>
+              </div>
+              <div style={{ textAlign:"right" }}>
+                <div style={{ fontWeight:800, fontSize:13, color:T.green }}>{p.pts}</div>
+                <div style={{ fontSize:10, color:T.muted }}>Last match</div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BUILD SCREEN ─────────────────────────────────────────────────────────────
+function BuildScreen({ selectedMatch, onTeamGenerated }) {
+  const [step, setStep] = useState(0); // 0=match 1=contest 2=players 3=loading
+  const [match, setMatch] = useState(selectedMatch);
+  const [contest, setContest] = useState(null);
+  const [risk, setRisk] = useState(null);
+  const [numTeams, setNumTeams] = useState(1);
+  const [players, setPlayers] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [captain, setCaptain] = useState(null);
+  const [vc, setVc] = useState(null);
+  const [filterRole, setFilterRole] = useState("ALL");
+  const [loadStep, setLoadStep] = useState(0);
+  const [error, setError] = useState("");
+  const [aiResult, setAiResult] = useState(null);
+
+  const credits = selected.reduce((s,id)=>s+(players.find(p=>p.id===id)?.cr||0),0);
+
+  useEffect(()=>{
+    if(match) setPlayers(makePlayers(match.t1, match.t2));
+  },[match]);
+
+  useEffect(()=>{
+    if(selectedMatch) { setMatch(selectedMatch); setStep(1); }
+  },[selectedMatch]);
+
+  const togglePlayer = id => {
+    if(selected.includes(id)){
+      setSelected(selected.filter(x=>x!==id));
+      if(captain===id) setCaptain(null);
+      if(vc===id) setVc(null);
+    } else {
+      if(selected.length>=11) return;
+      const p = players.find(x=>x.id===id);
+      const rc = selected.filter(sid=>players.find(x=>x.id===sid)?.r===p.r).length;
+      const maxR = {WK:2,BAT:5,AR:4,BOWL:5};
+      if(rc>=(maxR[p.r]||5)) return;
+      const tc = selected.filter(sid=>players.find(x=>x.id===sid)?.t===p.t).length;
+      if(tc>=7) return;
+      if(credits+p.cr>100) return;
+      setSelected([...selected, id]);
+    }
+  };
+
+  const loadMsgs = [
+    "🔍 Scanning player form & stats...",
+    "📊 Analyzing ownership patterns...",
+    "🎯 Running differential algorithm...",
+    "🤖 Computing C/VC combinations...",
+    "⚡ Finalizing AI strategy...",
+  ];
+
+  const runAI = async () => {
+    setStep(3); setLoadStep(0);
+    try {
+      for(let i=0;i<loadMsgs.length;i++){
+        setLoadStep(i);
+        await sleep(700);
+      }
+      const selPlayers = players.filter(p=>selected.includes(p.id));
+      const capP = players.find(p=>p.id===captain);
+      const vcP = players.find(p=>p.id===vc);
+
+      const prompt = `You are a Dream11 Grand League expert. Analyze this fantasy cricket team setup and provide expert GL/contest strategy.
+
+Match: ${teamName(match?.t1)} vs ${teamName(match?.t2)}
+Venue: ${match?.venue} | Pitch: ${match?.pitch} | Weather: ${match?.weather}
+Contest Type: ${contest} | Risk Level: ${risk}
+
+Selected Players:
+${selPlayers.map(p=>`• ${p.n} (${p.r}, ${p.t}) | Credits:${p.cr} | AvgPts:${p.pts} | Sel%:${p.sel}% | Form:${p.form}/100 | AIScore:${p.ai}/100${p.diff?' [DIFFERENTIAL]':''}`).join('\n')}
+
+Captain: ${capP?.n||'Not set'} (${capP?.r||''}, Sel:${capP?.sel||0}%, Cap%:${capP?.cap||0}%)
+Vice Captain: ${vcP?.n||'Not set'} (${vcP?.r||''}, Sel:${vcP?.sel||0}%, Cap%:${vcP?.cap||0}%)
+
+For ${contest==='GL'?'Grand League (maximize differentials, contrarian captaincy)':contest==='MEGA'?'Mega Contest (ultra-contrarian)':'this contest type'}, analyze and return ONLY this JSON (no markdown):
+
+{
+  "winProbability": 73,
+  "teamScore": 84,
+  "riskScore": 65,
+  "predictedPoints": 412,
+  "captainVerdict": "CONFIRM or CHANGE",
+  "captainAnalysis": "...",
+  "vcVerdict": "CONFIRM or CHANGE",
+  "vcAnalysis": "...",
+  "bestCaptain": "Player Name",
+  "bestVC": "Player Name",
+  "keyDifferentials": [
+    {"name":"...", "reason":"...", "ownership": 28, "upside":"..."},
+    {"name":"...", "reason":"...", "ownership": 19, "upside":"..."}
+  ],
+  "teamStrengths": ["...", "..."],
+  "teamWeaknesses": ["...", "..."],
+  "aiInsights": ["...", "...", "..."],
+  "pitchImpact": "...",
+  "matchPrediction": "...",
+  "contestEdge": "..."
+}`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          messages:[{role:"user", content:prompt}]
+        })
+      });
+      const data = await resp.json();
+      const text = data.content?.find(c=>c.type==="text")?.text||"";
+      const clean = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+      setAiResult(parsed);
+
+      // Auto-set C/VC if AI recommends change
+      if(parsed.captainVerdict==="CHANGE") {
+        const newCap = players.find(p=>p.n===parsed.bestCaptain&&selected.includes(p.id));
+        if(newCap) setCaptain(newCap.id);
+      }
+      if(parsed.vcVerdict==="CHANGE") {
+        const newVc = players.find(p=>p.n===parsed.bestVC&&selected.includes(p.id)&&p.id!==captain);
+        if(newVc) setVc(newVc.id);
+      }
+
+      onTeamGenerated(parsed, selPlayers, players.find(p=>p.id===captain), players.find(p=>p.id===vc));
+      setStep(4);
+    } catch(e) {
+      setError("AI analysis failed. Please try again.");
+      setStep(2);
+    }
+  };
+
+  const filtered = filterRole==="ALL" ? players : players.filter(p=>p.r===filterRole);
+
+  return (
+    <div style={{ padding:"0 16px 100px", paddingTop:60 }}>
+      {/* Progress */}
+      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:20, paddingTop:8 }}>
+        {["Match","Contest","Players","AI"].map((s,i)=>(
+          <div key={s} style={{ display:"flex", alignItems:"center", gap:6, flex:i<3?1:0 }}>
+            <div style={{ width:24, height:24, borderRadius:"50%", background:step>i?"#38bdf8":step===i?"#38bdf822":"#ffffff0a", border:`1px solid ${step>=i?"#38bdf8":"#ffffff15"}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:step>i?"#080d1a":step===i?"#38bdf8":"#64748b", transition:"all .3s" }}>
+              {step>i?"✓":i+1}
+            </div>
+            <span style={{ fontSize:10, fontWeight:step===i?700:400, color:step===i?T.neon:T.muted }}>{s}</span>
+            {i<3 && <div style={{ flex:1, height:1, background:step>i?"#38bdf855":"#ffffff10" }} />}
+          </div>
+        ))}
+      </div>
+
+      {/* Step 0: Match Selection */}
+      {step===0 && (
+        <div className="fade-up">
+          <div style={{ fontWeight:700, fontSize:16, marginBottom:14 }}>Select Match</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {UPCOMING.map(m=>(
+              <MatchCard key={m.id} match={m} selected={match?.id===m.id} onSelect={m=>{ setMatch(m); setStep(1); }} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Step 1: Contest + Risk */}
+      {step===1 && (
+        <div className="fade-up">
+          <div style={{ fontWeight:700, fontSize:16, marginBottom:4 }}>Contest & Strategy</div>
+          <div style={{ fontSize:12, color:T.muted, marginBottom:16 }}>
+            {match?.t1} vs {match?.t2} · {match?.time}
+          </div>
+          <div style={{ fontWeight:600, fontSize:13, marginBottom:10, color:T.muted, letterSpacing:".06em" }}>CONTEST TYPE</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+            {CONTEST_TYPES.map(c=>(
+              <GlassCard key={c.id} onClick={()=>setContest(c.id)} className="btn-press"
+                style={{ padding:14, cursor:"pointer", border:`1px solid ${contest===c.id?c.color+"66":T.cardBorder}`, background:contest===c.id?c.color+"11":T.card, transition:"all .2s" }}>
+                <div style={{ fontSize:22, marginBottom:6 }}>{c.icon}</div>
+                <div style={{ fontWeight:700, fontSize:13, marginBottom:4 }}>{c.label}</div>
+                <div style={{ fontSize:10, color:T.muted, lineHeight:1.4 }}>{c.desc}</div>
+              </GlassCard>
+            ))}
+          </div>
+          <div style={{ fontWeight:600, fontSize:13, marginBottom:10, color:T.muted, letterSpacing:".06em" }}>RISK LEVEL</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:20 }}>
+            {RISK_LEVELS.map(r=>(
+              <GlassCard key={r.id} onClick={()=>setRisk(r.id)} className="btn-press"
+                style={{ padding:"12px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:12, border:`1px solid ${risk===r.id?r.color+"66":T.cardBorder}`, background:risk===r.id?r.color+"0d":T.card }}>
+                <div style={{ width:12, height:12, borderRadius:"50%", background:r.color, boxShadow:`0 0 8px ${r.color}`, flexShrink:0 }} />
+                <div style={{ flex:1 }}>
+                  <div style={{ fontWeight:700, fontSize:13, color: risk===r.id?r.color:T.text }}>{r.label}</div>
+                  <div style={{ fontSize:11, color:T.muted }}>{r.desc}</div>
+                </div>
+                {risk===r.id && <span style={{ fontSize:14, color:r.color }}>✓</span>}
+              </GlassCard>
+            ))}
+          </div>
+          <div style={{ fontWeight:600, fontSize:13, marginBottom:10, color:T.muted, letterSpacing:".06em" }}>NUMBER OF TEAMS</div>
+          <div style={{ display:"flex", gap:8, marginBottom:24 }}>
+            {[1,3,5,10].map(n=>(
+              <button key={n} className="btn-press" onClick={()=>setNumTeams(n)} style={{ flex:1, padding:"10px 0", borderRadius:12, background:numTeams===n?"linear-gradient(135deg,#38bdf8,#818cf8)":"#ffffff0a", border:`1px solid ${numTeams===n?"#38bdf8":"#ffffff15"}`, color:numTeams===n?"#080d1a":T.muted, fontWeight:700, fontSize:13 }}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <button disabled={!contest||!risk} onClick={()=>setStep(2)} className="btn-press" style={{ width:"100%", padding:16, borderRadius:14, background:contest&&risk?"linear-gradient(135deg,#38bdf8,#818cf8)":"#ffffff0a", color:contest&&risk?"#080d1a":T.muted, fontWeight:700, fontSize:15, letterSpacing:".04em" }}>
+            Continue to Player Selection →
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Player Selection */}
+      {step===2 && (
+        <div className="fade-up">
+          {/* Stats row */}
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:8, marginBottom:14 }}>
+            {[
+              [selected.length+"/11","Players",selected.length===11?"#34d399":T.neon],
+              [credits.toFixed(1)+"/100","Credits",credits>95?"#f87171":T.neon],
+              [captain?"✓":"—","Captain",captain?"#fbbf24":T.muted],
+              [vc?"✓":"—","V-Cap",vc?"#818cf8":T.muted],
+            ].map(([v,l,c])=>(
+              <GlassCard key={l} style={{ padding:"10px 6px", textAlign:"center" }}>
+                <div style={{ fontWeight:800, fontSize:14, color:c }}>{v}</div>
+                <div style={{ fontSize:9, color:T.muted, letterSpacing:".06em" }}>{l}</div>
+              </GlassCard>
+            ))}
+          </div>
+
+          {/* Role filter */}
+          <div style={{ display:"flex", gap:6, marginBottom:12, overflowX:"auto", paddingBottom:2 }}>
+            {["ALL","WK","BAT","AR","BOWL"].map(r=>(
+              <button key={r} className="btn-press" onClick={()=>setFilterRole(r)} style={{ whiteSpace:"nowrap", padding:"6px 12px", borderRadius:999, background:filterRole===r?(r==="ALL"?"#38bdf8":ROLE_COLOR[r]):"#ffffff0a", border:"none", color:filterRole===r?"#080d1a":T.muted, fontSize:11, fontWeight:700 }}>
+                {r==="ALL"?"All":ROLE_ICON[r]+" "+r}
+              </button>
+            ))}
+          </div>
+
+          {/* Player list */}
+          <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:16 }}>
+            {filtered.map(p=>{
+              const isSel = selected.includes(p.id);
+              const isCap = captain===p.id;
+              const isVC = vc===p.id;
+              return (
+                <GlassCard key={p.id} onClick={()=>togglePlayer(p.id)} className="btn-press"
+                  style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:10, cursor:"pointer", border:`1px solid ${isSel?"#38bdf844":T.cardBorder}`, background:isSel?"#38bdf808":T.card, transition:"all .2s" }}>
+                  <div style={{ width:40, height:40, borderRadius:12, background:`${ROLE_COLOR[p.r]}22`, border:`1px solid ${ROLE_COLOR[p.r]}33`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:16, flexShrink:0 }}>
+                    {ROLE_ICON[p.r]}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:3 }}>
+                      <span style={{ fontWeight:700, fontSize:13 }}>{p.n}</span>
+                      {isCap && <span style={{ background:"#fbbf24", color:"#000", fontSize:8, fontWeight:800, padding:"1px 5px", borderRadius:3 }}>C</span>}
+                      {isVC && <span style={{ background:"#818cf8", color:"#fff", fontSize:8, fontWeight:800, padding:"1px 5px", borderRadius:3 }}>VC</span>}
+                      {p.diff && <AIBadge label="DIFF" />}
+                    </div>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      <TeamBadge teamId={p.t} />
+                      <RoleBadge role={p.r} />
+                      <span style={{ fontSize:10, color:T.muted }}>{p.sel}% sel</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign:"right", flexShrink:0 }}>
+                    <div style={{ fontWeight:800, fontSize:13, color:T.neon }}>₹{p.cr}cr</div>
+                    <div style={{ fontSize:10, color:T.muted }}>{p.pts}pts avg</div>
+                  </div>
+                  {isSel && (
+                    <div style={{ display:"flex", gap:4, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+                      <button className="btn-press" onClick={()=>{ if(vc===p.id) setVc(null); setCaptain(isCap?null:p.id); }}
+                        style={{ width:28, height:28, borderRadius:8, background:isCap?"#fbbf24":"#ffffff15", color:isCap?"#000":T.muted, fontWeight:800, fontSize:10, border:"none" }}>C</button>
+                      <button className="btn-press" onClick={()=>{ if(captain===p.id) setCaptain(null); setVc(isVC?null:p.id); }}
+                        style={{ width:28, height:28, borderRadius:8, background:isVC?"#818cf8":"#ffffff15", color:"#fff", fontWeight:800, fontSize:10, border:"none" }}>V</button>
+                    </div>
+                  )}
+                </GlassCard>
+              );
+            })}
+          </div>
+
+          {error && <div style={{ color:T.red, fontSize:12, textAlign:"center", marginBottom:8 }}>{error}</div>}
+        </div>
+      )}
+
+      {/* Step 3: AI Loading */}
+      {step===3 && (
+        <div className="fade-in" style={{ textAlign:"center", paddingTop:60 }}>
+          <div className="float-anim" style={{ width:80, height:80, borderRadius:"50%", background:"linear-gradient(135deg,#38bdf822,#818cf822)", border:"1px solid #38bdf844", margin:"0 auto 24px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:36 }}>🤖</div>
+          <div style={{ fontWeight:800, fontSize:20, marginBottom:8 }}>AI Analyzing...</div>
+          <div style={{ fontSize:13, color:T.neon, marginBottom:32 }} className="pulse-anim">{loadMsgs[loadStep]}</div>
+          <div style={{ background:"#ffffff0a", borderRadius:10, height:4, overflow:"hidden", maxWidth:280, margin:"0 auto" }}>
+            <div style={{ width:pct((loadStep+1)/loadMsgs.length*100), height:"100%", background:"linear-gradient(90deg,#38bdf8,#818cf8)", transition:"width .7s ease", borderRadius:10 }} />
+          </div>
+          <div style={{ fontSize:12, color:T.muted, marginTop:12 }}>{loadStep+1}/{loadMsgs.length} steps</div>
+        </div>
+      )}
+
+      {/* Step 4: Result preview */}
+      {step===4 && aiResult && (
+        <div className="fade-up">
+          <div style={{ textAlign:"center", marginBottom:20 }}>
+            <div style={{ fontSize:36, marginBottom:8 }}>🎉</div>
+            <div style={{ fontWeight:800, fontSize:20, color:T.green, marginBottom:4 }}>Team Ready!</div>
+            <div style={{ fontSize:12, color:T.muted }}>AI analysis complete • {numTeams} team{numTeams>1?"s":""} generated</div>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:16 }}>
+            {[
+              [aiResult.winProbability+"%","Win Prob","#34d399"],
+              [aiResult.teamScore,"Team Score","#38bdf8"],
+              [aiResult.predictedPoints,"Pred. Pts","#fbbf24"],
+            ].map(([v,l,c])=>(
+              <GlassCard key={l} style={{ padding:"12px 8px", textAlign:"center" }}>
+                <div style={{ fontWeight:800, fontSize:18, color:c }}>{v}</div>
+                <div style={{ fontSize:9, color:T.muted, letterSpacing:".05em" }}>{l}</div>
+              </GlassCard>
+            ))}
+          </div>
+          <GlassCard glow style={{ padding:14, marginBottom:12 }}>
+            <div style={{ fontSize:10, fontWeight:700, color:T.neon, letterSpacing:".1em", marginBottom:10 }}>AI MATCH INSIGHT</div>
+            <div style={{ fontSize:12, color:T.muted, lineHeight:1.5 }}>{aiResult.matchPrediction}</div>
+          </GlassCard>
+          {aiResult.aiInsights?.map((ins,i)=>(
+            <GlassCard key={i} style={{ padding:"10px 14px", marginBottom:8, borderLeft:"2px solid #38bdf844" }}>
+              <span style={{ fontSize:12, lineHeight:1.5 }}>💡 {ins}</span>
+            </GlassCard>
+          ))}
+          <button className="btn-press" onClick={()=>setStep(2)} style={{ width:"100%", marginTop:8, padding:14, borderRadius:14, background:"#ffffff0a", border:"1px solid #ffffff15", color:T.muted, fontWeight:600, fontSize:13 }}>
+            ← Edit Team
+          </button>
+        </div>
+      )}
+
+      {/* Sticky bottom CTA */}
+      {(step===2) && (
+        <div style={{ position:"fixed", bottom:64, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, padding:"12px 16px", background:`linear-gradient(to top, ${T.bg0} 70%, transparent)`, zIndex:50 }}>
+          <button disabled={selected.length<11||!captain||!vc} onClick={runAI} className="btn-press glow-anim"
+            style={{ width:"100%", padding:16, borderRadius:14, background:selected.length===11&&captain&&vc?"linear-gradient(135deg,#38bdf8,#818cf8)":"#ffffff0a", color:selected.length===11&&captain&&vc?"#080d1a":T.muted, fontWeight:800, fontSize:15, letterSpacing:".04em", transition:"all .3s" }}>
+            {selected.length<11?`Pick ${11-selected.length} More`:!captain?"Set Captain":!vc?"Set Vice Captain":"🤖 Generate AI Team"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ANALYTICS SCREEN ─────────────────────────────────────────────────────────
+function AnalyticsScreen() {
+  const [selected, setSelected] = useState(0);
+  const stars = makePlayers("MI","CSK");
+  const p = stars[selected];
+  const months = ["Jan","Feb","Mar","Apr","May","Jun"];
+  const pts = [38,52,44,78,65,p.pts];
+
+  return (
+    <div style={{ padding:"0 16px 80px", paddingTop:60 }}>
+      <div style={{ fontWeight:700, fontSize:18, marginBottom:4, paddingTop:8 }}>Player Analytics</div>
+      <div style={{ fontSize:12, color:T.muted, marginBottom:16 }}>Deep stats & AI predictions</div>
+
+      {/* Player picker */}
+      <div style={{ display:"flex", gap:8, overflowX:"auto", paddingBottom:8, marginBottom:16 }}>
+        {stars.slice(0,8).map((pl,i)=>(
+          <button key={i} className="btn-press" onClick={()=>setSelected(i)} style={{ flexShrink:0, padding:"8px 14px", borderRadius:12, background:selected===i?"linear-gradient(135deg,#38bdf822,#818cf822)":"#ffffff08", border:`1px solid ${selected===i?"#38bdf844":"#ffffff10"}`, color:selected===i?T.neon:T.muted, fontWeight:600, fontSize:12, whiteSpace:"nowrap" }}>
+            {pl.n.split(" ")[0]}
+          </button>
+        ))}
+      </div>
+
+      {/* Hero card */}
+      <GlassCard glow style={{ padding:18, marginBottom:14 }}>
+        <div style={{ display:"flex", gap:14, marginBottom:16 }}>
+          <div style={{ width:56, height:56, borderRadius:16, background:`linear-gradient(135deg, ${ROLE_COLOR[p.r]}33, ${ROLE_COLOR[p.r]}11)`, border:`2px solid ${ROLE_COLOR[p.r]}44`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:26, flexShrink:0 }}>
+            {ROLE_ICON[p.r]}
+          </div>
+          <div>
+            <div style={{ fontWeight:800, fontSize:17, marginBottom:4 }}>{p.n}</div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              <TeamBadge teamId={p.t} />
+              <RoleBadge role={p.r} />
+              {p.diff && <AIBadge label="DIFFERENTIAL" />}
+            </div>
+          </div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+          {[["AI Score",p.ai,T.neon],["Form",p.form,T.green],["Venue",p.venue,T.gold],["Cap%",p.cap,T.neon2]].map(([l,v,c])=>(
+            <ScoreRing key={l} score={v} size={52} color={c} label={l} />
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* Form chart */}
+      <GlassCard style={{ padding:16, marginBottom:14 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:T.muted, letterSpacing:".08em", marginBottom:14 }}>LAST 6 MONTHS FORM</div>
+        <div style={{ display:"flex", alignItems:"flex-end", gap:6, height:70 }}>
+          {pts.map((v,i)=>(
+            <div key={i} style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+              <div style={{ fontSize:9, color:T.muted }}>{v}</div>
+              <div style={{ width:"100%", borderRadius:"6px 6px 0 0", background:i===5?`linear-gradient(180deg,${T.neon},${T.neon2})`:"#38bdf833", height:pct(v/100*100), minHeight:4, transition:"height .6s ease", boxShadow:i===5?`0 0 8px ${T.neon}44`:undefined }} />
+              <div style={{ fontSize:9, color:T.muted }}>{months[i]}</div>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* Stats */}
+      <GlassCard style={{ padding:16, marginBottom:14 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:T.muted, letterSpacing:".08em", marginBottom:14 }}>DETAILED METRICS</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {[
+            ["Avg Fantasy Points", p.pts, 100, T.neon, `${p.pts} pts`],
+            ["Selection %", p.sel, 100, T.gold, `${p.sel}%`],
+            ["AI Rating", p.ai, 100, T.green, `${p.ai}/100`],
+            ["Venue Performance", p.venue, 100, T.neon2, `${p.venue}/100`],
+          ].map(([label, val, max, color, display])=>(
+            <StatBar key={label} label={label} value={val} max={max} color={color} showPct={display} />
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* AI verdict */}
+      <GlassCard style={{ padding:14, borderLeft:`2px solid ${T.neon}` }}>
+        <div style={{ fontSize:10, fontWeight:700, color:T.neon, letterSpacing:".1em", marginBottom:8 }}>🤖 AI VERDICT</div>
+        <div style={{ fontSize:13, lineHeight:1.6, color:T.text }}>
+          {p.n} is rated <strong style={{ color:T.neon }}>{p.ai}/100</strong> by AI. 
+          {p.diff ? ` A key differential at only ${p.sel}% selection — ideal for GL captaincy rotation.` : ` Highly selected pick, best used as a safe contributor rather than C/VC differential.`}
+          {p.venue > 80 ? ` Outstanding venue track record makes this a must-have.` : ""}
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
+// ─── TEAMS SCREEN (saved teams) ───────────────────────────────────────────────
+function TeamsScreen() {
+  const mockTeams = [
+    { id:1, name:"GL Team #1", match:"MI vs CSK", prob:78, pts:432, contest:"GL", c:"Suryakumar", vc:"Bumrah", ts: "2h ago" },
+    { id:2, name:"Safe XI", match:"MI vs CSK", prob:64, pts:398, contest:"SL", c:"Rohit Sharma", vc:"Jadeja", ts: "3h ago" },
+    { id:3, name:"Degen Mode", match:"RCB vs KKR", prob:45, pts:487, contest:"MEGA", c:"Tilak Varma", vc:"Pathirana", ts: "1d ago" },
+  ];
+
+  return (
+    <div style={{ padding:"0 16px 80px", paddingTop:60 }}>
+      <div style={{ fontWeight:700, fontSize:18, marginBottom:4, paddingTop:8 }}>My Teams</div>
+      <div style={{ fontSize:12, color:T.muted, marginBottom:16 }}>Saved & generated teams</div>
+
+      {mockTeams.length===0 ? (
+        <div style={{ textAlign:"center", paddingTop:60 }}>
+          <div style={{ fontSize:40, marginBottom:12 }}>🏏</div>
+          <div style={{ fontWeight:700, fontSize:16, marginBottom:6 }}>No Teams Yet</div>
+          <div style={{ fontSize:13, color:T.muted }}>Generate your first AI team</div>
+        </div>
+      ) : (
+        <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          {mockTeams.map(team=>(
+            <GlassCard key={team.id} style={{ padding:16 }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
+                <div>
+                  <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>{team.name}</div>
+                  <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                    <span style={{ fontSize:10, color:T.muted, background:"#ffffff06", padding:"2px 7px", borderRadius:6 }}>{team.match}</span>
+                    <span style={{ background:CONTEST_TYPES.find(c=>c.id===team.contest)?.color+"22", border:`1px solid ${CONTEST_TYPES.find(c=>c.id===team.contest)?.color+"44"}`, borderRadius:6, padding:"2px 7px", fontSize:10, fontWeight:700, color:CONTEST_TYPES.find(c=>c.id===team.contest)?.color }}>{team.contest}</span>
+                  </div>
+                </div>
+                <span style={{ fontSize:10, color:T.muted }}>{team.ts}</span>
+              </div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+                <div style={{ background:"#34d39911", borderRadius:10, padding:"8px", textAlign:"center" }}>
+                  <div style={{ fontWeight:800, fontSize:16, color:T.green }}>{team.prob}%</div>
+                  <div style={{ fontSize:9, color:T.muted }}>Win Prob</div>
+                </div>
+                <div style={{ background:"#38bdf811", borderRadius:10, padding:"8px", textAlign:"center" }}>
+                  <div style={{ fontWeight:800, fontSize:16, color:T.neon }}>{team.pts}</div>
+                  <div style={{ fontSize:9, color:T.muted }}>Pred. Pts</div>
+                </div>
+                <div style={{ background:"#fbbf2411", borderRadius:10, padding:"8px", textAlign:"center" }}>
+                  <div style={{ fontWeight:800, fontSize:12, color:T.gold }}>{team.c}</div>
+                  <div style={{ fontSize:9, color:T.muted }}>Captain</div>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button className="btn-press" style={{ flex:1, padding:"8px", borderRadius:10, background:"#38bdf811", border:"1px solid #38bdf822", color:T.neon, fontSize:12, fontWeight:600 }}>👁️ View</button>
+                <button className="btn-press" style={{ flex:1, padding:"8px", borderRadius:10, background:"#34d39911", border:"1px solid #34d39922", color:T.green, fontSize:12, fontWeight:600 }}>📤 Share</button>
+                <button className="btn-press" style={{ flex:1, padding:"8px", borderRadius:10, background:"#f471b611", border:"1px solid #f471b622", color:T.accent, fontSize:12, fontWeight:600 }}>📋 Copy</button>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PROFILE SCREEN ───────────────────────────────────────────────────────────
+function ProfileScreen() {
+  const stats = [
+    ["48","Teams Built"],["73%","Win Rate"],["₹2.4L","Total Won"],["12","Contests Won"],
+  ];
+  const features = [
+    { icon:"🏆", label:"GL Expert Mode", status:"PRO", color:"#fbbf24" },
+    { icon:"🤖", label:"AI Captain Optimizer", status:"PRO", color:"#38bdf8" },
+    { icon:"⚡", label:"Toss Update Teams", status:"PRO", color:"#34d399" },
+    { icon:"📊", label:"Deep Analytics", status:"FREE", color:"#64748b" },
+    { icon:"🔔", label:"Smart Notifications", status:"FREE", color:"#64748b" },
+  ];
+  return (
+    <div style={{ padding:"0 16px 80px", paddingTop:60 }}>
+      {/* Profile hero */}
+      <div style={{ textAlign:"center", paddingTop:8, marginBottom:24 }}>
+        <div className="float-anim" style={{ width:72, height:72, borderRadius:"50%", background:"linear-gradient(135deg,#38bdf8,#818cf8)", margin:"0 auto 12px", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, boxShadow:"0 0 24px #38bdf844" }}>
+          🏏
+        </div>
+        <div style={{ fontWeight:800, fontSize:18, marginBottom:4 }}>Lahu</div>
+        <div style={{ display:"inline-flex", alignItems:"center", gap:6, background:"#fbbf2422", border:"1px solid #fbbf2444", borderRadius:8, padding:"4px 12px" }}>
+          <span style={{ fontSize:12 }}>👑</span>
+          <span style={{ fontSize:11, fontWeight:700, color:T.gold, letterSpacing:".06em" }}>PRO MEMBER</span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:20 }}>
+        {stats.map(([v,l])=>(
+          <GlassCard key={l} style={{ padding:"14px", textAlign:"center" }}>
+            <div style={{ fontWeight:800, fontSize:22, color:T.neon, marginBottom:4 }}>{v}</div>
+            <div style={{ fontSize:11, color:T.muted }}>{l}</div>
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* Premium banner */}
+      <GlassCard glow style={{ padding:18, marginBottom:20, background:"linear-gradient(135deg,#38bdf810,#818cf810)" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:12 }}>
+          <span style={{ fontSize:28 }}>💎</span>
+          <div>
+            <div style={{ fontWeight:800, fontSize:15 }}>Upgrade to Ultra Pro</div>
+            <div style={{ fontSize:11, color:T.muted }}>Unlimited teams · GL AI · Priority alerts</div>
+          </div>
+        </div>
+        <button className="btn-press" style={{ width:"100%", padding:12, borderRadius:12, background:"linear-gradient(135deg,#fbbf24,#fb923c)", color:"#000", fontWeight:800, fontSize:14 }}>
+          🚀 Upgrade Now — ₹99/month
+        </button>
+      </GlassCard>
+
+      {/* Features */}
+      <div style={{ marginBottom:20 }}>
+        <div style={{ fontWeight:700, fontSize:14, marginBottom:12, color:T.muted, letterSpacing:".06em" }}>FEATURES</div>
+        {features.map(f=>(
+          <GlassCard key={f.label} style={{ padding:"12px 14px", display:"flex", alignItems:"center", gap:12, marginBottom:8 }}>
+            <span style={{ fontSize:20 }}>{f.icon}</span>
+            <span style={{ flex:1, fontSize:13, fontWeight:600 }}>{f.label}</span>
+            <span style={{ background:f.status==="PRO"?"#fbbf2422":"#ffffff0a", border:`1px solid ${f.status==="PRO"?"#fbbf2444":"#ffffff10"}`, borderRadius:6, padding:"2px 8px", fontSize:10, fontWeight:700, color:f.status==="PRO"?T.gold:T.muted }}>
+              {f.status}
+            </span>
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* Settings */}
+      {[["⚙️ Settings",""],["🔔 Notifications",""],["❓ Help & FAQ",""],["🔒 Privacy Policy",""]].map(([label])=>(
+        <GlassCard key={label} className="btn-press" style={{ padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8, cursor:"pointer" }}>
+          <span style={{ fontSize:13, fontWeight:600 }}>{label}</span>
+          <span style={{ color:T.muted, fontSize:16 }}>›</span>
+        </GlassCard>
+      ))}
+    </div>
+  );
+}
+
+// ─── BOTTOM NAV ────────────────────────────────────────────────────────────────
+function BottomNav({ active, onNav }) {
+  const items = [
+    { id:"home", icon:"🏠", label:"Home" },
+    { id:"build", icon:"🤖", label:"Build" },
+    { id:"analytics", icon:"📊", label:"Stats" },
+    { id:"teams", icon:"🏆", label:"Teams" },
+    { id:"profile", icon:"👤", label:"Profile" },
+  ];
+  return (
+    <div style={{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, background:`${T.bg1}ee`, backdropFilter:"blur(20px)", borderTop:"1px solid #ffffff0d", display:"flex", zIndex:100 }}>
+      {items.map(item=>(
+        <button key={item.id} onClick={()=>onNav(item.id)} className="btn-press"
+          style={{ flex:1, padding:"10px 0 14px", display:"flex", flexDirection:"column", alignItems:"center", gap:3, background:"none", border:"none", cursor:"pointer" }}>
+          <span style={{ fontSize:20, filter:active===item.id?"drop-shadow(0 0 6px #38bdf8)":"none", transition:"filter .2s" }}>{item.icon}</span>
+          <span style={{ fontSize:9, fontWeight:active===item.id?700:400, color:active===item.id?T.neon:T.muted, letterSpacing:".04em", transition:"color .2s" }}>{item.label}</span>
+          {active===item.id && <div style={{ position:"absolute", bottom:0, width:24, height:2, background:T.neon, borderRadius:999, boxShadow:`0 0 8px ${T.neon}` }} />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── TOP BAR ──────────────────────────────────────────────────────────────────
+function TopBar({ screen }) {
+  const titles = { home:"Dream11 AI", build:"AI Builder", analytics:"Analytics", teams:"My Teams", profile:"Profile" };
+  return (
+    <div style={{ position:"fixed", top:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:480, background:`${T.bg0}cc`, backdropFilter:"blur(20px)", borderBottom:"1px solid #ffffff08", zIndex:100, padding:"12px 16px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+        <span style={{ fontSize:18 }}>🏏</span>
+        <span style={{ fontWeight:800, fontSize:16, background:"linear-gradient(135deg,#38bdf8,#818cf8)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>
+          {titles[screen]}
+        </span>
+      </div>
+      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
+        <LiveDot />
+        <span style={{ fontSize:10, color:T.neon, letterSpacing:".08em" }}>LIVE</span>
+        <div style={{ width:30, height:30, borderRadius:10, background:"linear-gradient(135deg,#38bdf822,#818cf822)", border:"1px solid #38bdf833", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🔔</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── SPLASH SCREEN ────────────────────────────────────────────────────────────
+function SplashScreen({ onDone }) {
+  const [progress, setProgress] = useState(0);
+  useEffect(()=>{
+    const t = setInterval(()=>setProgress(p=>{ if(p>=100){ clearInterval(t); return 100; } return p+4; }),40);
+    setTimeout(onDone, 1200);
+    return ()=>clearInterval(t);
+  },[]);
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", background:`radial-gradient(ellipse at 50% 30%, #38bdf810 0%, #04060f 60%)` }}>
+      <div className="float-anim" style={{ fontSize:64, marginBottom:16 }}>🏏</div>
+      <h1 style={{ fontSize:28, fontWeight:900, letterSpacing:"-.02em", marginBottom:4, background:"linear-gradient(135deg,#38bdf8,#818cf8)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Dream11 AI Pro</h1>
+      <p style={{ fontSize:12, color:T.muted, letterSpacing:".1em", marginBottom:40 }}>POWERED BY ARTIFICIAL INTELLIGENCE</p>
+      <div style={{ width:200, height:2, background:"#ffffff08", borderRadius:999, overflow:"hidden" }}>
+        <div style={{ width:pct(progress), height:"100%", background:"linear-gradient(90deg,#38bdf8,#818cf8)", transition:"width .04s linear", borderRadius:999 }} />
+      </div>
+    </div>
+  );
+}
+
+// ─── ROOT APP ─────────────────────────────────────────────────────────────────
+export default function App() {
+  const [splash, setSplash] = useState(true);
+  const [screen, setScreen] = useState("home");
+  const [selectedMatch, setSelectedMatch] = useState(null);
+  const [aiTeamResult, setAiTeamResult] = useState(null);
+
+  if(splash) return (
+    <>
+      <style>{GLOBAL_CSS}</style>
+      <SplashScreen onDone={()=>setSplash(false)} />
+    </>
+  );
+
+  return (
+    <>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{ maxWidth:480, margin:"0 auto", minHeight:"100vh", background:`linear-gradient(180deg, ${T.bg0} 0%, ${T.bg1} 100%)`, position:"relative" }}>
+        {/* Ambient background effects */}
+        <div style={{ position:"fixed", top:"15%", left:"10%", width:200, height:200, borderRadius:"50%", background:"radial-gradient(circle, #38bdf808 0%, transparent 70%)", pointerEvents:"none", zIndex:0 }} />
+        <div style={{ position:"fixed", bottom:"20%", right:"5%", width:160, height:160, borderRadius:"50%", background:"radial-gradient(circle, #818cf808 0%, transparent 70%)", pointerEvents:"none", zIndex:0 }} />
+
+        <TopBar screen={screen} />
+
+        <div style={{ position:"relative", zIndex:1 }}>
+          {screen==="home" && <HomeScreen onNavigate={setScreen} onSelectMatch={m=>{setSelectedMatch(m);setScreen("build");}} />}
+          {screen==="build" && <BuildScreen selectedMatch={selectedMatch} onTeamGenerated={(res,pl,cap,vc)=>{ setAiTeamResult({res,pl,cap,vc}); }} />}
+          {screen==="analytics" && <AnalyticsScreen />}
+          {screen==="teams" && <TeamsScreen />}
+          {screen==="profile" && <ProfileScreen />}
+        </div>
+
+        <BottomNav active={screen} onNav={s=>{ setScreen(s); if(s!=="build") setSelectedMatch(null); }} />
+      </div>
+    </>
+  );
+}
